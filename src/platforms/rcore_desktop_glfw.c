@@ -1387,9 +1387,6 @@ int InitPlatform(void)
         // NOTE: This hint only has an effect on platforms where screen coordinates and pixels always map 1:1 such as Windows and X11.
         // On platforms like macOS the resolution of the framebuffer is changed independently of the window size.
         glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);   // Scale content area based on the monitor content scale where window is placed on
-#if defined(__APPLE__)
-        glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
-#endif
     }
     else glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
 
@@ -1596,23 +1593,10 @@ int InitPlatform(void)
             TRACELOG(LOG_INFO, "DISPLAY: Trying to enable VSYNC");
         }
 
-        int fbWidth = CORE.Window.screen.width;
-        int fbHeight = CORE.Window.screen.height;
-
-        if ((CORE.Window.flags & FLAG_WINDOW_HIGHDPI) > 0)
-        {
-            // NOTE: On APPLE platforms system should manage window/input scaling and also framebuffer scaling.
-            // Framebuffer scaling should be activated with: glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
-    #if !defined(__APPLE__)
-            glfwGetFramebufferSize(platform.handle, &fbWidth, &fbHeight);
-
-            // Screen scaling matrix is required in case desired screen area is different from display area
-            CORE.Window.screenScale = MatrixScale((float)fbWidth/CORE.Window.screen.width, (float)fbHeight/CORE.Window.screen.height, 1.0f);
-
-            // Mouse input scaling for the new screen size
-            SetMouseScale((float)CORE.Window.screen.width/fbWidth, (float)CORE.Window.screen.height/fbHeight);
-    #endif
-        }
+        // It's never correct to assume that the framebuffer size matches the screen size
+        int fbWidth, fbHeight;
+        glfwGetFramebufferSize(platform.handle, &fbWidth, &fbHeight);
+        CORE.Window.screenScale = MatrixScale((float)fbWidth/CORE.Window.screen.width, (float)fbHeight/CORE.Window.screen.height, 1.0f);
 
         CORE.Window.render.width = fbWidth;
         CORE.Window.render.height = fbHeight;
@@ -1746,29 +1730,19 @@ static void ErrorCallback(int error, const char *description)
 // NOTE: Window resizing not enabled by default, use SetConfigFlags()
 static void WindowSizeCallback(GLFWwindow *window, int width, int height)
 {
+    int fbWidth, fbHeight;
+    glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+    CORE.Window.currentFbo.width = fbWidth;
+    CORE.Window.currentFbo.height = fbHeight;
+    CORE.Window.render.width = fbWidth;
+    CORE.Window.render.height = fbHeight;
+
     // Reset viewport and projection matrix for new size
     SetupViewport(width, height);
 
-    CORE.Window.currentFbo.width = width;
-    CORE.Window.currentFbo.height = height;
     CORE.Window.resizedLastFrame = true;
 
     if (IsWindowFullscreen()) return;
-
-    // if we are doing automatic DPI scaling, then the "screen" size is divided by the window scale
-    if (IsWindowState(FLAG_WINDOW_HIGHDPI))
-    {
-        width = (int)(width/GetWindowScaleDPI().x);
-        height = (int)(height/GetWindowScaleDPI().y);
-    }
-
-    // Set render size
-    CORE.Window.render.width = width;
-    CORE.Window.render.height = height;
-
-    // Set current screen size
-    CORE.Window.screen.width = width;
-    CORE.Window.screen.height = height;
 
     // WARNING: If using a render texture, it is not scaled to new size
 }
